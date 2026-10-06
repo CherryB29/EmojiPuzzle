@@ -583,11 +583,6 @@
         let zIndexCounter = 100;
         let currentPuzzleData = null;
 
-        // Inertia Throwing Mechanics
-        let lastPointerPos = { x: 0, y: 0, time: 0 };
-        let pointerVel = { x: 0, y: 0 };
-        let physicsAnimFrame = null;
-
         // Vast Emoji Collection Across All Categories
         const emojis = [
             // Animals & Nature
@@ -750,8 +745,6 @@
             jigsawPiecesArea.innerHTML = '';
             jigsawPieces = [];
             slotOccupants = new Array(n * n).fill(null);
-            
-            if (physicsAnimFrame) cancelAnimationFrame(physicsAnimFrame);
 
             const tileCount = n * n;
             jigsawGrid.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
@@ -791,7 +784,7 @@
             const col = index % n;
             const row = Math.floor(index / n);
             const bgX = (col / (n - 1 || 1)) * 100;
-            const bgY = (row / (n - 1 || 1)) * 100;
+            const bgY = (row / (row - 1 || 1)) * 100;
             piece.style.backgroundPosition = `${bgX}% ${bgY}%`;
             
             let startX, startY;
@@ -812,9 +805,7 @@
                 lastSlotIndex: null,
                 isBlank: isBlank,
                 el: piece,
-                size: size,
-                vx: 0,
-                vy: 0
+                size: size
             };
             jigsawPieces.push(pieceObj);
             
@@ -833,15 +824,6 @@
 
             const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
             const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
-
-            const gridRect = jigsawGrid.getBoundingClientRect();
-            const startInsideBoard = (
-                clientX >= gridRect.left && clientX <= gridRect.right &&
-                clientY >= gridRect.top && clientY <= gridRect.bottom
-            );
-
-            // 퍼즐 판 안에서 드래그를 시작했는지 유무 기록
-            pieceObj.startedInsideBoard = (pieceObj.slotIndex !== null) || startInsideBoard;
 
             if (pieceObj.slotIndex !== null) {
                 pieceObj.lastSlotIndex = pieceObj.slotIndex;
@@ -874,9 +856,6 @@
                 y: clientY - rect.top
             };
 
-            lastPointerPos = { x: clientX, y: clientY, time: Date.now() };
-            pointerVel = { x: 0, y: 0 };
-
             document.addEventListener('mousemove', drag);
             document.addEventListener('touchmove', drag, { passive: false });
             document.addEventListener('mouseup', endDrag);
@@ -889,12 +868,6 @@
 
             const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
             const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
-            const now = Date.now();
-            const dt = Math.max(1, now - lastPointerPos.time);
-
-            pointerVel.x = (clientX - lastPointerPos.x) / dt;
-            pointerVel.y = (clientY - lastPointerPos.y) / dt;
-            lastPointerPos = { x: clientX, y: clientY, time: now };
 
             const areaRect = jigsawPiecesArea.getBoundingClientRect();
             let newLeft = clientX - dragOffset.x - areaRect.left;
@@ -917,44 +890,11 @@
 
         function highlightNearbySlot(clientX, clientY) {
             document.querySelectorAll('.jigsaw-slot').forEach(s => s.classList.remove('highlight'));
-            const targetSlot = findTargetSlot(clientX, clientY, draggingPiece ? draggingPiece.size : 60);
+            const targetSlot = findTargetSlot(clientX, clientY);
             if (targetSlot) targetSlot.classList.add('highlight');
         }
 
-        function findSlotUnderPoint(px, py) {
-            const slots = document.querySelectorAll('.jigsaw-slot');
-            for (let slot of slots) {
-                const r = slot.getBoundingClientRect();
-                if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
-                    return slot;
-                }
-            }
-            return null;
-        }
-
-        function findNearestEmptySlot(px, py, maxDistance = Infinity) {
-            const slots = document.querySelectorAll('.jigsaw-slot');
-            let minDistance = Infinity;
-            let nearest = null;
-            
-            for (let slot of slots) {
-                const slotIdx = parseInt(slot.dataset.index);
-                if (slotOccupants[slotIdx] === null) {
-                    const r = slot.getBoundingClientRect();
-                    const sx = r.left + r.width / 2;
-                    const sy = r.top + r.height / 2;
-                    const dist = Math.hypot(px - sx, py - sy);
-                    
-                    if (dist < maxDistance && dist < minDistance) {
-                        minDistance = dist;
-                        nearest = slot;
-                    }
-                }
-            }
-            return nearest;
-        }
-
-        function findNearestSlot(px, py) {
+        function findTargetSlot(px, py) {
             const slots = document.querySelectorAll('.jigsaw-slot');
             let minDistance = Infinity;
             let nearest = null;
@@ -972,21 +912,6 @@
             return nearest;
         }
 
-        function findTargetSlot(px, py, pieceSize) {
-            const firstSlot = document.querySelector('.jigsaw-slot');
-            const slotSize = firstSlot ? firstSlot.getBoundingClientRect().width : (pieceSize || 60);
-            const searchRadius = slotSize * 1.8;
-            
-            // 1. 주변 범위 내에 빈 칸이 있다면 가장 가까운 빈 칸을 우선 선택
-            const nearestEmpty = findNearestEmptySlot(px, py, searchRadius);
-            if (nearestEmpty) {
-                return nearestEmpty;
-            }
-            
-            // 2. 주변에 빈 칸이 없으면 가장 가까운 일반 칸 선택
-            return findNearestSlot(px, py);
-        }
-
         function endDrag(e) {
             if (!draggingPiece) return;
             
@@ -998,8 +923,6 @@
             document.querySelectorAll('.jigsaw-slot').forEach(s => s.classList.remove('highlight'));
             draggingPiece.el.classList.remove('dragging');
 
-            const speed = Math.hypot(pointerVel.x, pointerVel.y);
-            
             const rect = draggingPiece.el.getBoundingClientRect();
             const px = rect.left + rect.width / 2;
             const py = rect.top + rect.height / 2;
@@ -1012,110 +935,14 @@
                 py <= gridRect.bottom + 20
             );
 
-            // 판 안에서 시작해서 판 안으로 이동한 경우: 바로 목표 슬롯에 안착
-            if (draggingPiece.startedInsideBoard && isInsideBoard) {
-                const targetSlot = findTargetSlot(px, py, draggingPiece.size);
+            if (isInsideBoard) {
+                const targetSlot = findTargetSlot(px, py);
                 if (targetSlot) {
                     snapPieceToSlot(draggingPiece, parseInt(targetSlot.dataset.index));
                 }
-            } else if (speed > 0.35) {
-                // 속도가 빠르면 던지기로 간주하여 물리 엔진 적용
-                draggingPiece.vx = pointerVel.x * 38; 
-                draggingPiece.vy = pointerVel.y * 38;
-                runPhysicsGlide(draggingPiece);
-            } else if (isInsideBoard) {
-                // 판 밖에서 판 안으로 드래그해 가져온 경우
-                const targetSlot = findTargetSlot(px, py, draggingPiece.size);
-                if (targetSlot) {
-                    snapPieceToSlot(draggingPiece, parseInt(targetSlot.dataset.index));
-                }
-            } else {
-                checkSnapOrStay(draggingPiece);
             }
 
             draggingPiece = null;
-        }
-
-        function runPhysicsGlide(pieceObj) {
-            const friction = 0.93;
-
-            function step() {
-                if (pieceObj.isPlaced || !pieceObj.el) return;
-
-                pieceObj.vx *= friction;
-                pieceObj.vy *= friction;
-
-                const curLeft = parseFloat(pieceObj.el.style.left) || 0;
-                const curTop = parseFloat(pieceObj.el.style.top) || 0;
-                
-                let nextLeft = curLeft + pieceObj.vx;
-                let nextTop = curTop + pieceObj.vy;
-
-                const areaRect = jigsawPiecesArea.getBoundingClientRect();
-                const minLeft = -areaRect.left + 8;
-                const maxLeft = window.innerWidth - areaRect.left - pieceObj.size - 8;
-                const minTop = -areaRect.top + 8;
-                const maxTop = window.innerHeight - areaRect.top - pieceObj.size - 8;
-
-                if (nextLeft < minLeft) { nextLeft = minLeft; pieceObj.vx = -pieceObj.vx * 0.5; }
-                if (nextLeft > maxLeft) { nextLeft = maxLeft; pieceObj.vx = -pieceObj.vx * 0.5; }
-                if (nextTop < minTop) { nextTop = minTop; pieceObj.vy = -pieceObj.vy * 0.5; }
-                if (nextTop > maxTop) { nextTop = maxTop; pieceObj.vy = -pieceObj.vy * 0.5; }
-
-                pieceObj.el.style.left = `${nextLeft}px`;
-                pieceObj.el.style.top = `${nextTop}px`;
-
-                const rect = pieceObj.el.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-                const hitSlot = findTargetSlot(centerX, centerY, pieceObj.size);
-
-                const currentSpeed = Math.hypot(pieceObj.vx, pieceObj.vy);
-                if (hitSlot && currentSpeed < 8) {
-                    const slotIdx = parseInt(hitSlot.dataset.index);
-                    if (slotOccupants[slotIdx] === null) {
-                        snapPieceToSlot(pieceObj, slotIdx);
-                        return;
-                    }
-                }
-
-                if (currentSpeed > 0.5) {
-                    physicsAnimFrame = requestAnimationFrame(step);
-                } else {
-                    checkSnapOrStay(pieceObj, true);
-                }
-            }
-            physicsAnimFrame = requestAnimationFrame(step);
-        }
-
-        function checkSnapOrStay(pieceObj, isFromGlide = false) {
-            const rect = pieceObj.el.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-
-            const gridRect = jigsawGrid.getBoundingClientRect();
-            const isInsideBoard = (
-                centerX >= gridRect.left - 20 &&
-                centerX <= gridRect.right + 20 &&
-                centerY >= gridRect.top - 20 &&
-                centerY <= gridRect.bottom + 20
-            );
-
-            if (isInsideBoard) {
-                const targetSlot = findTargetSlot(centerX, centerY, pieceObj.size);
-                if (targetSlot) {
-                    const slotIdx = parseInt(targetSlot.dataset.index);
-                    if (isFromGlide) {
-                        if (slotOccupants[slotIdx] === null) {
-                            snapPieceToSlot(pieceObj, slotIdx);
-                        } else {
-                            ejectPiece(pieceObj);
-                        }
-                    } else {
-                        snapPieceToSlot(pieceObj, slotIdx);
-                    }
-                }
-            }
         }
 
         function ejectPiece(piece) {
@@ -1124,9 +951,16 @@
             piece.el.classList.remove('placed');
             piece.el.style.width = `${piece.size}px`;
             piece.el.style.height = `${piece.size}px`;
+
+            const areaRect = jigsawPiecesArea.getBoundingClientRect();
+            const margin = 8;
+            const maxX = Math.max(10, areaRect.width - piece.size - (margin * 2));
+            const maxY = Math.max(10, areaRect.height - piece.size - (margin * 2));
+            
+            piece.el.style.left = `${margin + Math.random() * maxX}px`;
+            piece.el.style.top = `${margin + Math.random() * maxY}px`;
+
             jigsawPiecesArea.appendChild(piece.el);
-            piece.el.style.left = `${Math.random() * 60 + 10}px`;
-            piece.el.style.top = `${Math.random() * 60 + 10}px`;
         }
 
         function placePieceInSlot(piece, slotIndex) {
