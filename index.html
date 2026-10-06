@@ -784,7 +784,7 @@
             const col = index % n;
             const row = Math.floor(index / n);
             const bgX = (col / (n - 1 || 1)) * 100;
-            const bgY = (row / (row - 1 || 1)) * 100;
+            const bgY = (row / (n - 1 || 1)) * 100;
             piece.style.backgroundPosition = `${bgX}% ${bgY}%`;
             
             let startX, startY;
